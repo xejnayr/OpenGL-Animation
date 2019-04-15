@@ -3,7 +3,6 @@
 #include <cmath>
 #include <stdlib.h>
 #include "camera.h"
-#include "cube.h"
 #include "polygon.h"
 
 #ifndef _WIN32
@@ -19,11 +18,18 @@ float pitch, yaw = 0.0;
 float sensitivity = 0.05;
 int tick = 0;
 
+bool timestop = false;
 bool lights_on = true;
 bool clipping = true;
 bool window_lights_on = true;
 bool world_light_on = true;
 bool sunlight_on = true;
+
+int windGen = 0;
+bool windOn = false;
+int windXDir = 0;
+int windZDir = 0;
+int snowTick = 0;
 
 int window_width = 720;
 int window_height = 720;
@@ -34,7 +40,8 @@ GLfloat sphereRotation = 0.0;
 GLfloat minuteHandRotation = 0.0;
 GLfloat hourHandRotation = 0.0;
 
-float snowLoc[4][750] = {};
+const int maxFlakes = 1500;
+float snowLoc[4][maxFlakes] = {};
 float snowflakeSize = 0;
 float snowAccumulation = 0;
 
@@ -195,29 +202,72 @@ void drawAccumulatedSnow(){
 }
 
 void randomizeSnow(){
-	for(int i = 0; i < 750; i++){
-		snowLoc[0][i] = (rand() % 200) - 100;
+	for(int i = 0; i < maxFlakes; i++){
+		snowLoc[0][i] = (rand() % 400) - 200;
 		snowLoc[1][i] = rand() % 200;
-		snowLoc[2][i] = (rand() % 200) - 100;
-		snowLoc[3][i] = 0.5 / (rand() % 10 + 1);
+		snowLoc[2][i] = (rand() % 400) - 200;
+		snowLoc[3][i] = 0.75 / (rand() % 10 + 1);
 	}
 }
 
 void drawSnow(){
-	for(int i = 0; i < 750; i++){
+	
+	
+	/* Thought about including wind to blow snowflakes around
+	 * Having too many flakes lags the program a lot (of course)
+	 * And the snowfall immediately after the wind is weird
+	 * So probably not going to include it
+	windGen = (rand() % 4);
+	if(snowTick < 600){
+		windOn = false;
+	}
+	if(snowTick >= 600 && snowTick <= 690){
+		std::cout<<"Wind blowing"<<std::endl;
+		windOn = true;
+		if(windGen = 0){
+			windXDir = 1;
+			windZDir = 1;
+		}
+		if(windGen = 1){
+			windXDir = -1;
+			windZDir = 1;
+		}
+		if(windGen = 2){
+			windXDir = -1;
+			windZDir = -1;
+		}
+		if(windGen = 3){
+			windXDir = 1;
+			windZDir = -1;
+		}
+	}
+	if(snowTick > 690){
+		//std::cout<<"Resetting snowTick"<<std::endl;
+		windXDir = 0;
+		windZDir = 0;
+		snowTick = 0;
+	}
+	*/
+	
+	for(int i = 0; i < maxFlakes; i++){
 		glPushMatrix();
 			glTranslatef(snowLoc[0][i], snowLoc[1][i], snowLoc[2][i]);
-			//snowflakeSize = 0.5 / (rand() % 10 + 1);
-			//rainDrop.drawPolygon();
 			glutSolidSphere(snowLoc[3][i],10,10);
-			snowLoc[1][i] -= 0.5;
+			if(not timestop){
+				snowLoc[0][i] -= 0.5 * windXDir;
+				snowLoc[1][i] -= 0.5;
+				snowLoc[2][i] -= 0.5 * windZDir;
+			}
 			if(snowLoc[1][i] <= 0){
+				snowLoc[0][i] = (rand() % 200) - 100;
 				snowLoc[1][i] = 200;
+				snowLoc[2][i] = (rand() % 200) - 100;
+				snowLoc[3][i] = 0.75 / (rand() % 10 + 1);
 				snowAccumulation += 0.001;
 			}
 		glPopMatrix();
 	}
-	
+	//snowTick++;
 }
 
 void drawSphere(){
@@ -233,13 +283,13 @@ void drawSphere(){
 			glTranslatef(0, 150, 0);
 			glLightfv(GL_LIGHT5, GL_DIFFUSE, sphere_diffuse);
 			glLightfv(GL_LIGHT5, GL_POSITION, sphere_light_pos);
-			glColor4f(1,1,1,1);
+			glColor4f(1,0,0,1);
 			glutSolidSphere (10, 40, 40);
 		glPopMatrix();
 		
 	glPopMatrix();
 	
-	if((sphereRotation >= 0) && (sphereRotation < 180)){
+	if((sphereRotation >= 90) && (sphereRotation < 270) && not timestop){
 		sky_color[1] = sky_color[1] - (0.000416667 * 2);
 		sky_color[2] = sky_color[2] - (0.00125 * 2);
 		glEnable(GL_LIGHT1);
@@ -256,8 +306,10 @@ void drawSphere(){
 			glDisable(GL_LIGHT4);
 		}
 		window_lights_on = false;
-		sky_color[1] = sky_color[1] + (0.000416667 * 2);
-		sky_color[2] = sky_color[2] + (0.00125 * 2);
+		if(not timestop){
+			sky_color[1] = sky_color[1] + (0.000416667 * 2);
+			sky_color[2] = sky_color[2] + (0.00125 * 2);
+		}
 		//std::cout<<sky_color[1]<<" "<<sky_color[2]<<std::endl;
 	}
 	
@@ -265,7 +317,9 @@ void drawSphere(){
 	
 	glClearColor(sky_color[0],sky_color[1],sky_color[2],1);
 	
-	sphereRotation += 0.1;
+	if(not timestop){
+		sphereRotation += 0.1;
+	}
 	minuteHandRotation = sphereRotation * 24;
 	hourHandRotation = sphereRotation * 2;
 	
@@ -331,18 +385,19 @@ void generateView(){
 	
 	glPushMatrix();
 	glTranslatef(hourHand.transX, hourHand.transY, hourHand.transZ);
-	glTranslatef(-1.9,-1,-0.64);
+	glTranslatef(0,0,-0.32);
 	glRotatef(hourHandRotation, -1, 0, 0);
-	glTranslatef(1.9,1,0.64);
+	//glTranslatef(hourHand.transX * -1, hourHand.transY * -1, hourHand.transZ * -1);
+	glTranslatef(0,0,0.32);
 	hourHand.drawHand();
 	glPopMatrix();
 	
 	
 	glPushMatrix();
 	glTranslatef(minuteHand.transX, minuteHand.transY, minuteHand.transZ);
-	glTranslatef(-3.8,-1,-0.8);
+	glTranslatef(0,0,-0.4);
 	glRotatef(minuteHandRotation, -1, 0, 0);
-	glTranslatef(3.8,1,0.8);
+	glTranslatef(0,0,0.4);
 	minuteHand.drawHand();
 	glPopMatrix();
 	
@@ -640,6 +695,9 @@ void keyPressed(unsigned char key, int x, int y){
 				window_lights_on = true;
 			}
 			std::cout<<"World light: "<<world_light_on<<" "<<"Window lights: "<<window_lights_on<<std::endl;
+			break;
+		case 'f':
+			timestop = not timestop;
 			break;
 	}
 	
