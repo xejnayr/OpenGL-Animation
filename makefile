@@ -1,9 +1,9 @@
-CXX=g++
-LIBFLAGS=-lglut -lGLU -lGL
-DEPS = camera.h cube.h
-OBJ = rjex_project4.o camera.o cube.o
+CXX = g++
+LIBFLAGS = -lglut -lGLU -lGL
+DEPS = camera.h polygon.h
+OBJ = rjex_project5.o camera.o polygon.o
 
-all: rjex_project4
+all: rjex_project5
 
 %.o: %.cpp $(DEPS)
 	$(CXX) -c -o $@ $< $(LIBFLAGS)
